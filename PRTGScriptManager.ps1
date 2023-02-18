@@ -63,6 +63,8 @@ $var_btn_copy_to_dev.isEnabled = $false
 $var_bt_run_in_ise.isEnabled = $false
 #disable the clear dev buttons befor
 $var_bt_clear_dev_folder.IsEnabled = $false
+#disable the new script buttons befor
+$var_btn_new_sensor.IsEnabled = $false
 
 
 #Functions
@@ -160,11 +162,11 @@ $window.TopMost = $false
         }else {
             $srcFile = Join-Path $stablePath $selectedScript
         }
-        $content = Get-Content $srcFile -TotalCount 12
+        $content = Get-Content $srcFile -TotalCount 500
         Write-Host "selected: "$srcFile
         $var_tb_script_info.Text = $content  -join [Environment]::NewLine
         # add the selected script filename to the textbox
-        $var_tb_selected_script.Text = $selectedScript
+        $var_tb_selected_script.Text = $srcFile
     }else {
         Write-Host "new select run started"
     }
@@ -446,8 +448,33 @@ $window.TopMost = $false
 
 
 
-
 })
+
+
+
+#Checkbox_: "cb_new_sensor_name"
+$var_cb_new_sensor_changlog.Add_Unchecked({
+  $var_bt_add_desc_changes.IsEnabled = $false
+})
+
+#Checkbox_: "cb_new_sensor_name"
+$var_cb_new_sensor_changlog.Add_checked({
+  $var_bt_add_desc_changes.IsEnabled = $true
+  $window.TopMost = $false
+})
+
+
+#Checkbox_: "cb_new_sensor_name"
+$var_cb_new_sensor_name.Add_Unchecked({
+  $var_btn_new_sensor.IsEnabled = $false
+})
+
+#Checkbox_: "cb_new_sensor_name"
+$var_cb_new_sensor_name.Add_checked({
+  $var_btn_new_sensor.IsEnabled = $true
+  $window.TopMost = $false
+})
+
 
 
 #Checkbox_: "Clear dev folder"
