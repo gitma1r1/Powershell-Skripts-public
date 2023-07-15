@@ -6,13 +6,13 @@ $CsvFilePath = "C:\Users\mai156\Desktop\audiobook_test_02\test.csv"
 
 # Erstellen des Hauptfensters
 $Form = New-Object System.Windows.Forms.Form
-$Form.Size = New-Object System.Drawing.Size(900, 600)
+$Form.Size = New-Object System.Drawing.Size(1410, 700)
 $Form.StartPosition = "CenterScreen"
 $Form.Text = "Tabelle"
 
 # DataGridView erstellen
 $DataGridView = New-Object System.Windows.Forms.DataGridView
-$DataGridView.Size = New-Object System.Drawing.Size(880, 500)
+$DataGridView.Size = New-Object System.Drawing.Size(1400, 500)
 $DataGridView.AllowUserToAddRows = $false
 $DataGridView.MultiSelect = $false
 
@@ -28,9 +28,12 @@ function Export-DataGridViewToCSV {
 
     $DataTable = $DataGridView.DataSource
 
-    # DataTable in CSV exportieren
-    $DataTable | Export-Csv -Path $FilePath -NoTypeInformation -Append
+    $CsvData = $DataTable | ConvertTo-Csv -NoTypeInformation -Delimiter ';'
+    $CsvData = "Nr;Titel;Author;Verlag;Sprecher;Dauer;Notizen" + [Environment]::NewLine + $CsvData
+
+    $CsvData | Set-Content -Path $FilePath -Encoding UTF8
 }
+
 
 # Funktion zum Importieren der Tabelle aus einer CSV-Datei
 function Import-DataGridViewFromCSV {
@@ -39,7 +42,7 @@ function Import-DataGridViewFromCSV {
         [string]$FilePath
     )
 
-    $CsvData = Import-Csv -Path $FilePath
+    $CsvData = Import-Csv -Path $FilePath -Encoding Default
 
     $DataTable = New-Object System.Data.DataTable
 
@@ -66,6 +69,9 @@ function Import-DataGridViewFromCSV {
 
     # Hinzufügen der Daten zur Tabelle
     $DataGridView.DataSource = $DataTable
+
+    # Spaltenbreite der Nummer (Nr) anpassen
+    AutoSizeColumnNr
 }
 
 # Funktion zum Laden einer neuen Tabelle
@@ -87,6 +93,10 @@ function LoadTable {
     $OpenFileDialog.Title = "Tabelle laden"
     if ($OpenFileDialog.ShowDialog() -eq 'OK') {
         $OpenFilePath = $OpenFileDialog.FileName
+
+        # Aktualisieren des ausgewählten Dateinamens
+        $SelectedFileLabel.Text = "Ausgewählte Datei: " + $OpenFileDialog.SafeFileName
+
 
         # Löschen der vorhandenen Zellen und der Tabelle
         $DataGridView.DataSource = $null
@@ -152,15 +162,19 @@ function DeleteSelectedRows {
     if ($selectedRows.Count -gt 0) {
         $result = [System.Windows.Forms.MessageBox]::Show("Möchten Sie die ausgewählten Zeilen wirklich löschen?", "Zeilen löschen", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
         if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
-            foreach ($row in $selectedRows) {
-                $DataTable.Rows.RemoveAt($row.Index)
+            $selectedIndices = $selectedRows | ForEach-Object { $_.Index }
+            $selectedIndices | ForEach-Object {
+                $DataTable.Rows.RemoveAt($_)
             }
 
             # Aktualisieren der Nr-Spalte
-            $i = 1
-            foreach ($row in $DataTable.Rows) {
-                $row["Nr"] = $i++
+            for ($i = 0; $i -lt $DataTable.Rows.Count; $i++) {
+                $DataTable.Rows[$i]["Nr"] = $i + 1
             }
+
+            # Neu laden der Tabelle
+            $DataGridView.DataSource = $null
+            $DataGridView.DataSource = $DataTable
 
             $ChangesMade = $true
             $Form.Text = "Tabelle*"
@@ -171,10 +185,93 @@ function DeleteSelectedRows {
     $DataGridView.ClearSelection()
 }
 
+
 # Funktion zum Überprüfen, ob Änderungen an der Tabelle vorgenommen wurden
 function HasChanges {
     $DataTable = $DataGridView.DataSource
     return $DataTable.GetChanges() -ne $null
+}
+
+# Funktion zum Löschen der Tabelle
+function ClearTable {
+    $DialogResult = [System.Windows.Forms.MessageBox]::Show("Möchten Sie die Tabelle wirklich löschen?", "Tabelle löschen", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+    if ($DialogResult -eq [System.Windows.Forms.DialogResult]::Yes) {
+        $DataGridView.DataSource = $null
+        $ChangesMade = $false
+        $Form.Text = "Tabelle"
+        $SaveButton.Enabled = $false
+    }
+}
+
+# Funktion zum Rückgängigmachen von Änderungen
+function UndoChanges {
+    if ($ChangesMade) {
+        $DialogResult = [System.Windows.Forms.MessageBox]::Show("Möchten Sie die vorgenommenen Änderungen verwerfen?", "Änderungen verwerfen", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($DialogResult -eq [System.Windows.Forms.DialogResult]::Yes) {
+            Import-DataGridViewFromCSV -DataGridView $DataGridView -FilePath $CsvFilePath
+            $ChangesMade = $false
+            $Form.Text = "Tabelle"
+            $SaveButton.Enabled = $false
+        }
+    }
+}
+
+# Funktion zum Überprüfen und Hervorheben erforderlicher Felder
+function ValidateRequiredFields {
+    $DataTable = $DataGridView.DataSource
+    $requiredFields = @("Titel", "Author", "Verlag", "Sprecher", "Dauer")
+
+    foreach ($row in $DataTable.Rows) {
+        foreach ($field in $requiredFields) {
+            if ([string]::IsNullOrEmpty($row[$field])) {
+                $DataGridView.Rows[$row.Index].Cells[$field].Style.BackColor = [System.Drawing.Color]::LightPink
+            } else {
+                $DataGridView.Rows[$row.Index].Cells[$field].Style.BackColor = [System.Drawing.Color]::Empty
+            }
+        }
+    }
+}
+
+# Variable zur Verfolgung der aktuellen Spaltenbreiten
+$ColumnWidthAdjusted = $false
+
+# Standard-Spaltenbreiten
+$DefaultColumnWidths = @(100, 100, 100, 100, 100, 100, 100)
+
+# Funktion zum Automatischen Anpassen der Spaltenbreite
+function AutoSizeColumns {
+    $DataGridView.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::AllCells
+    $ColumnWidthAdjusted = $true
+}
+
+# Funktion zum Zurücksetzen der Spaltenbreiten auf Standardwerte
+function ResetColumnWidths {
+    $DataGridView.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::None
+
+    # Setzen der Spaltenbreite auf Standardwerte
+    for ($i = 0; $i -lt $DataGridView.Columns.Count; $i++) {
+        $DataGridView.Columns[$i].Width = $DefaultColumnWidths[$i]
+    }
+
+    $ColumnWidthAdjusted = $false
+}
+
+# Funktion zum Automatischen Anpassen der Spaltenbreite der Nummer (Nr)
+function AutoSizeColumnNr {
+    $DataGridView.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::AllCells
+    #$DataGridView.Columns["Nr"].DefaultCellStyle.Alignment = [System.Windows.Forms.DataGridViewContentAlignment]::MiddleRight
+}
+
+# Funktion zum Zurücksetzen der Spaltenbreiten auf Standardwerte
+function ResetColumnWidths {
+    $DataGridView.AutoSizeColumnsMode = [System.Windows.Forms.DataGridViewAutoSizeColumnsMode]::None
+
+    # Setzen der Spaltenbreite auf Standardwerte
+    for ($i = 0; $i -lt $DataGridView.Columns.Count; $i++) {
+        $DataGridView.Columns[$i].Width = $DefaultColumnWidths[$i]
+    }
+
+    $ColumnWidthAdjusted = $false
 }
 
 # DataGridView CellValueChanged Event Handler
@@ -343,7 +440,7 @@ $Form.Controls.Add($AddRowButton)
 $DeleteRowsButton = New-Object System.Windows.Forms.Button
 $DeleteRowsButton.Location = New-Object System.Drawing.Point(340, 520)
 $DeleteRowsButton.Size = New-Object System.Drawing.Size(100, 30)
-$DeleteRowsButton.Text = "Zeile löschen"
+$DeleteRowsButton.Text = "Zeilen löschen"
 $DeleteRowsButton.Enabled = $true
 $DeleteRowsButton.Add_Click({ DeleteSelectedRows })
 $Form.Controls.Add($DeleteRowsButton)
@@ -359,6 +456,54 @@ $ScrollToTopButton.Add_Click({
 })
 $Form.Controls.Add($ScrollToTopButton)
 
+# Button zum Löschen der Tabelle
+$ClearTableButton = New-Object System.Windows.Forms.Button
+$ClearTableButton.Location = New-Object System.Drawing.Point(560, 520)
+$ClearTableButton.Size = New-Object System.Drawing.Size(100, 30)
+$ClearTableButton.Text = "Tabelle löschen"
+$ClearTableButton.Add_Click({ ClearTable })
+$Form.Controls.Add($ClearTableButton)
+
+# Button zum Rückgängigmachen von Änderungen
+$UndoButton = New-Object System.Windows.Forms.Button
+$UndoButton.Location = New-Object System.Drawing.Point(670, 520)
+$UndoButton.Size = New-Object System.Drawing.Size(100, 30)
+$UndoButton.Text = "Änderungen rückgängig"
+$UndoButton.Add_Click({
+    UndoChanges
+})
+$Form.Controls.Add($UndoButton)
+
+# Button zum Automatischen Anpassen der Spaltenbreite
+$AutoSizeButton = New-Object System.Windows.Forms.Button
+$AutoSizeButton.Location = New-Object System.Drawing.Point(780, 520)
+$AutoSizeButton.Size = New-Object System.Drawing.Size(100, 30)
+$AutoSizeButton.Text = "Spalten anpassen"
+$AutoSizeButton.Add_Click({
+    if ($ColumnWidthAdjusted) {
+        ResetColumnWidths
+    } else {
+        AutoSizeColumns
+    }
+})
+$Form.Controls.Add($AutoSizeButton)
+
+# Button zum Zurücksetzen der Spaltenbreiten auf Standardwerte
+$ResetColumnWidthsButton = New-Object System.Windows.Forms.Button
+$ResetColumnWidthsButton.Location = New-Object System.Drawing.Point(890, 520)
+$ResetColumnWidthsButton.Size = New-Object System.Drawing.Size(100, 30)
+$ResetColumnWidthsButton.Text = "Standardbreiten"
+$ResetColumnWidthsButton.Add_Click({
+    ResetColumnWidths
+})
+$Form.Controls.Add($ResetColumnWidthsButton)
+
+# Label zum Anzeigen des ausgewählten Dateinamens
+$SelectedFileLabel = New-Object System.Windows.Forms.Label
+$SelectedFileLabel.Location = New-Object System.Drawing.Point(10, 560)
+$SelectedFileLabel.Size = New-Object System.Drawing.Size(600, 20)
+$Form.Controls.Add($SelectedFileLabel)
+
 # DataGridView Scroll Event Handler
 $Scroll = {
     if ($DataGridView.FirstDisplayedScrollingRowIndex -eq 0) {
@@ -368,13 +513,6 @@ $Scroll = {
     }
 }
 $DataGridView.Add_Scroll($Scroll)
-
-
-# Import CSV from CsvFilePath
-Import-DataGridViewFromCSV -DataGridView $DataGridView -FilePath $CsvFilePath
-
-# Hinzufügen der Tabelle zum Hauptfenster
-$Form.Controls.Add($DataGridView)
 
 # Anzeigen des Hauptfensters
 $Form.Add_FormClosing({
@@ -391,4 +529,14 @@ $Form.Add_FormClosing({
     }
 })
 
+# Import CSV from CsvFilePath
+Import-DataGridViewFromCSV -DataGridView $DataGridView -FilePath $CsvFilePath
+
+#Zeigt Pfad der aktuellen CSV in einem Label an
+$SelectedFileLabel.Text = "Ausgewählte Datei: " + $CsvFilePath
+
+# Hinzufügen der Tabelle zum Hauptfenster
+$Form.Controls.Add($DataGridView)
+
+# Anzeigen des Hauptfensters
 $Form.ShowDialog() | Out-Null
